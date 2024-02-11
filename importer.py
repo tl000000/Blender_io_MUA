@@ -5,6 +5,14 @@ import math
 import mathutils
 import struct
 
+def stripify(Tristriplist,bm):
+    Ind = Tristriplist
+    IndsCount = len(Tristriplist)
+    for i in range(IndsCount - 2):
+        Facelist.append((bm.verts[Ind[i]], bm.verts[Ind[i + 1]],bm.verts[Ind[i + 2]]))
+    return Facelist
+    
+    
 def read_Address(f):
     #get address and count for data block
     addr = []
@@ -72,6 +80,8 @@ def read_Skeleton(f,addr,count,Name,CurCollection):
             matrixZ.append(struct.unpack('<ffff', f.read(4*4)))
             framecount = int.from_bytes(f.read(4),byteorder='little')
             
+            eul = mathutils.Euler(Rot, 'XYZ')
+            
             edit_bone = armature_obj.data.edit_bones.new(Name[boneNameIndex])
             edit_bone.use_connect = False
             edit_bone.use_local_location = True
@@ -82,15 +92,16 @@ def read_Skeleton(f,addr,count,Name,CurCollection):
             matrixY.clear()
             matrixZ.clear()
             
-            print(bonePIndex)
             if bonePIndex != -1:
                edit_bone.parent = armature_obj.data.edit_bones[bonePIndex]
                
     bpy.ops.object.mode_set(mode='OBJECT')
-            
-def read_mesh(f,addr,count,Name):
-    for i in range(0,count[2]):
-        f.seek(addr[2]+ i * 0xC0)
+
+Tristriplist = []
+Facelist = []
+def read_mesh(f,addr,count,Name,CurCollection):
+    for m in range(0,count[2]):
+        f.seek(addr[2]+ m * 0xC0)
         SkeletonIndex = struct.unpack('<f', f.read(4))
         _,VertextGroupCount = f.read(4),int.from_bytes(f.read(4),byteorder='little')
         VertextGroupOffset = int.from_bytes(f.read(4),byteorder='little')
@@ -98,10 +109,41 @@ def read_mesh(f,addr,count,Name):
         VertexOffset = int.from_bytes(f.read(4),byteorder='little')
         _,MNIndex = f.read(156),int.from_bytes(f.read(4),byteorder='little')
         MSRIndex = int.from_bytes(f.read(4),byteorder='little')
-        for j in range(0,VertextGroupCount)
-            MIndex  = int.from_bytes(f.read(4),byteorder='little')
+        
+        mesh = bpy.data.meshes.new("Mesh")
+        obj = bpy.data.objects.new("MyObject", mesh)
+        CurCollection.objects.link(obj)
+        bpy.context.view_layer.objects.active = obj
+        
+        mesh = bpy.context.object.data
+        bm = bmesh.new()
+        
+        for v in range(0,VertextCount):
+            f.seek(addr[13]+ v * 0x50)
+            vec = mathutils.Vector(struct.unpack('<fff', f.read(4*3)))
+            nrm = mathutils.Vector(struct.unpack('<fff', f.read(4*3)))
+            tan = mathutils.Vector(struct.unpack('<fff', f.read(4*3)))
+            UV = mathutils.Vector(struct.unpack('<ff', f.read(4*2)))
+            vert = bm.verts.new(vec)
+            vert.normal = nrm
+        
+        for g in range(0,VertextGroupCount):
+            f.seek(addr[3]+ g * 0x20)
+            MatIndex  = int.from_bytes(f.read(4),byteorder='little')
             FIcount = int.from_bytes(f.read(4),byteorder='little')
             FIoffset = int.from_bytes(f.read(4),byteorder='little')
+            f.seek(addr[14]+ FIoffset * 0x2)
+            for i in range(0,FIcount):
+                Tristriplist.append(int.from_bytes(f.read(2),byteorder='little'))
+            Facelist = stripify(Tristriplist,bm)
+            for f in Facelist:
+                face = bm.faces.new()
+                face.verts = 
+            
+            
+        bm.to_mesh(mesh)
+        bm.free()
+        
         
 
 def read_some_data(context, filepath):
@@ -112,8 +154,8 @@ def read_some_data(context, filepath):
     
     addr,count = read_Address(f)
     Name = read_stringname(f,addr,count)
-    read_Skeleton(f,addr,count,Name,CurCollection)
-    
+    #read_Skeleton(f,addr,count,Name,CurCollection)
+    read_mesh(f,addr,count,Name,CurCollection)
     
     f.close()
 
