@@ -25,7 +25,7 @@ def get_bone_data():
 
 # ExportHelper is a helper class, defines filename and
 # invoke() function which calls the file selector.
-from bpy_extras.io_utils import ExportHelper
+from bpy_extras.io_utils import ExportHelper,orientation_helper
 from bpy.types import Operator
 from bpy.props import StringProperty
 

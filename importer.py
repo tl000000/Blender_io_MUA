@@ -1,15 +1,20 @@
-
 import bpy
 import bmesh
 import math
 import mathutils
 import struct
 
-def stripify(Tristriplist,bm):
+def triangulate(Tristriplist,bm):
+    '''
+    Convert triangle strips Index to triangles Index
+    '''
     Ind = Tristriplist
     IndsCount = len(Tristriplist)
     for i in range(IndsCount - 2):
-        Facelist.append((bm.verts[Ind[i]], bm.verts[Ind[i + 1]],bm.verts[Ind[i + 2]]))
+        if i % 2 == 0:
+            Facelist.append((Ind[i], Ind[i + 1], Ind[i + 2]))
+        else:
+            Facelist.append((Ind[i], Ind[i + 2], Ind[i + 1]))
     return Facelist
     
     
@@ -30,6 +35,7 @@ def read_Address(f):
     return addr,count
     
 def read_stringname(f,addr,count):
+    #return string in file
     Name = []
     stringlength = []
     stringoffset = []
@@ -38,13 +44,14 @@ def read_stringname(f,addr,count):
         stringoffset.append(int.from_bytes(f.read(4),byteorder='little'))
         stringlength.append(int.from_bytes(f.read(4),byteorder='little'))
         f.seek(addr[16] + stringoffset[i])
-        Name.append(f.read(stringlength[i]).decode("shift-jis"))
+        Name.append(str(f.read(stringlength[i]).decode("shift-jis")))
     return Name
     
 matrixX = []
 matrixY = []
 matrixZ = []
 def read_Skeleton(f,addr,count,Name,CurCollection):
+    #read skeleton data and creat Armature object
     for i in range(0,count[0]):
         f.seek(addr[0]+ i * 0x20)
         SkeletonIndex = int.from_bytes(f.read(4),byteorder='little')
@@ -58,7 +65,7 @@ def read_Skeleton(f,addr,count,Name,CurCollection):
             f.seek(addr[1]+ j * 0x130)
             boneNameIndex = int.from_bytes(f.read(4),byteorder='little')
             boneType = int.from_bytes(f.read(4),byteorder='little',signed = True)
-            trans = struct.unpack('<fff', f.read(4*3))
+            Trans = struct.unpack('<fff', f.read(4*3))
             Rot = struct.unpack('<fff', f.read(4*3))
             Scal = struct.unpack('<fff', f.read(4*3))
             bonetail = struct.unpack('<fff', f.read(4*3))
@@ -81,6 +88,9 @@ def read_Skeleton(f,addr,count,Name,CurCollection):
             framecount = int.from_bytes(f.read(4),byteorder='little')
             
             eul = mathutils.Euler(Rot, 'XYZ')
+            #Rotmatrix = mathutils.Matrix.LocRotScale(Trans, eul, Scal)
+            
+            print(matrixX.row,matrixY.row)
             
             edit_bone = armature_obj.data.edit_bones.new(Name[boneNameIndex])
             edit_bone.use_connect = False
@@ -99,6 +109,7 @@ def read_Skeleton(f,addr,count,Name,CurCollection):
 
 Tristriplist = []
 Facelist = []
+verts = []
 def read_mesh(f,addr,count,Name,CurCollection):
     for m in range(0,count[2]):
         f.seek(addr[2]+ m * 0xC0)
@@ -110,13 +121,7 @@ def read_mesh(f,addr,count,Name,CurCollection):
         _,MNIndex = f.read(156),int.from_bytes(f.read(4),byteorder='little')
         MSRIndex = int.from_bytes(f.read(4),byteorder='little')
         
-        mesh = bpy.data.meshes.new("Mesh")
-        obj = bpy.data.objects.new("MyObject", mesh)
-        CurCollection.objects.link(obj)
-        bpy.context.view_layer.objects.active = obj
-        
-        mesh = bpy.context.object.data
-        bm = bmesh.new()
+        bm = bmesh.new(use_operators=True)
         
         for v in range(0,VertextCount):
             f.seek(addr[13]+ v * 0x50)
@@ -124,8 +129,17 @@ def read_mesh(f,addr,count,Name,CurCollection):
             nrm = mathutils.Vector(struct.unpack('<fff', f.read(4*3)))
             tan = mathutils.Vector(struct.unpack('<fff', f.read(4*3)))
             UV = mathutils.Vector(struct.unpack('<ff', f.read(4*2)))
-            vert = bm.verts.new(vec)
-            vert.normal = nrm
+            _,B,G,R,A = f.read(8),int.from_bytes(f.read(1),byteorder='little'),int.from_bytes(f.read(1),byteorder='little'),int.from_bytes(f.read(1),byteorder='little'),int.from_bytes(f.read(1),byteorder='little')
+            weightboneIndex1 = struct.unpack('<f', f.read(4))
+            weightboneIndex2 = struct.unpack('<f', f.read(4))
+            weightboneIndex3 = struct.unpack('<f', f.read(4))
+            weight1 = struct.unpack('<f', f.read(4))
+            weight2 = struct.unpack('<f', f.read(4))
+            weight3 = struct.unpack('<f', f.read(4))
+            
+            bmvert = bmesh.ops.create_vert(bm,co = vec)
+            vert = bmvert["vert"][0]
+            verts.append(vert)
         
         for g in range(0,VertextGroupCount):
             f.seek(addr[3]+ g * 0x20)
@@ -135,13 +149,14 @@ def read_mesh(f,addr,count,Name,CurCollection):
             f.seek(addr[14]+ FIoffset * 0x2)
             for i in range(0,FIcount):
                 Tristriplist.append(int.from_bytes(f.read(2),byteorder='little'))
-            Facelist = stripify(Tristriplist,bm)
-            for f in Facelist:
-                face = bm.faces.new()
-                face.verts = 
-            
-            
+            Facelist = triangulate(Tristriplist,bm)
+            for j in range(FIcount - 2):
+                bmesh.ops.contextual_create(bm, geom=[vert[Facelist[j][0]],vert[Facelist[j][1]],vert[Facelist[j][2]]], mat_nr=0, use_smooth=False)
+        
+        mesh = bpy.data.meshes.new(Name(MNIndex))
         bm.to_mesh(mesh)
+        obj = bpy.data.objects.new("Object", mesh)
+        CurCollection.objects.link(obj)
         bm.free()
         
         
@@ -164,7 +179,7 @@ def read_some_data(context, filepath):
 
 # ImportHelper is a helper class, defines filename and
 # invoke() function which calls the file selector.
-from bpy_extras.io_utils import ImportHelper
+from bpy_extras.io_utils import ImportHelper,orientation_helper
 from bpy.props import StringProperty
 from bpy.types import Operator
 
@@ -173,6 +188,7 @@ class ImportMUA(Operator, ImportHelper):
     """This appears in the tooltip of the operator and in the generated docs"""
     bl_idname = "import_scene.mua"  # important since its how bpy.ops.import_test.some_data is constructed
     bl_label = "Import MUA"
+    bl_options = {'UNDO', 'PRESET'}
 
     # ImportHelper mixin class uses this
     filename_ext = ".MUA"
@@ -180,8 +196,7 @@ class ImportMUA(Operator, ImportHelper):
     filter_glob: StringProperty(
         default="*.MUA",
         options={'HIDDEN'},
-        maxlen=255,  # Max internal buffer length, longer would be clamped.
-    )
+        maxlen=255,  # Max internal buffer length, longer would be clamped.)
 
     def execute(self, context):
         return read_some_data(context, self.filepath)

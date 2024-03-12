@@ -1,16 +1,21 @@
 
-
 bl_info = {
     "name": "Arcsys MUA Importer & Exporter",
     "author": "Tianling",
     "version": (0, 0, 1),
-    "blender": (3, 5, 1),
+    "blender": (2, 8, 0),
     "location": "File > Import-Export",
     "description": "Import and export MUA files",
     "warning": "",
     "category": "Import-Export",
     }
 
+if "bpy" in locals():
+    import importlib
+    if "importer" in locals():
+        importlib.reload(importer)
+    if "exporter" in locals():
+        importlib.reload(exporter)
 
 def register():
     from .exporter import register_exporter
